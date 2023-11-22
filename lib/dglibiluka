@@ -1,0 +1,2870 @@
+<?php
+
+
+/* 最大メールアドレス長 */
+define("MAXMAIL", 256);
+
+/***********************************************************
+ * read_global
+ *
+ * keepalived.confファイルの読み込み
+ *
+ * [引数]
+ *        $filename     keepalived.confの絶対パス
+ *        &$data        各要素を格納した配列
+ * [返り値]
+ *        TRUE       正常
+ *        FALSE      エラー
+ *
+ **********************************************************/
+function read_global($filename, &$data)
+{
+
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    $fh = fopen($filename, "r");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28045'][SCREEN_MSG], $filename);
+        $log_msg = sprintf($msgarr['28045'][LOG_MSG], $filename);
+        return FALSE;
+    }
+        
+    while($result = fgets($fh)) {
+        $result = trim($result);
+        if ($result === "global_defs {") {
+            break;
+        } 
+    }
+
+    if ($result === FALSE) {
+        $err_msg = sprintf($msgarr['28053'][SCREEN_MSG], $filename);
+        $log_msg = sprintf($msgarr['28053'][LOG_MSG], $filename);
+        return FALSE;
+    }
+
+    $mail_flag = 0;
+    $key = 0;
+    while ($result = fgets($fh)) {
+        $result = trim($result);
+        $lines = preg_split("[\s+]", $result, 2);
+        if ($mail_flag === 1) {
+            if ($lines[0] === "}") {
+                $mail_flag = 0;
+                continue;
+            }
+            $data["notification_email"][$key] = $result;
+            $key = $key + 1;
+        } else { 
+
+            /* notification_emailの取得 */
+            if ($lines[0] === "notification_email") {
+                $mail_flag = 1;
+                continue;
+            } 
+            if ($lines[0] === "}") {
+                break;
+            }
+ 
+            /* notification_email_fromの取得*/
+            if ($lines[0] === "notification_email_from") {
+                $data["notification_email_from"] = $lines[1];
+                continue;
+            }
+
+            /* smtp_serverの取得*/
+            if ($lines[0] === "smtp_server") {
+                $data["smtp_server"] = $lines[1];
+                continue;
+            }
+
+            /* smtp_connect_timeoutの取得*/
+            if ($lines[0] === "smtp_connect_timeout") {
+                $data["smtp_connect_timeout"] = $lines[1];
+                continue;
+            }
+        }
+    }
+
+    if ($result === FALSE) {
+        $err_msg = sprintf($msgarr['28053'][SCREEN_MSG], $filename);
+        $log_msg = sprintf($msgarr['28053'][LOG_MSG], $filename);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************
+ * write_global
+ *
+ * keepalived.confへの書き込み
+ *
+ * [引数]
+ *         $filename      keepalived.confの絶対パス
+ *         $data          入力された各要素を格納した配列
+ *         $tmplfilename  keepalived.conf.tmplの相対パス
+ * [返り値]
+ *         0       正常
+ *         1       失敗
+ *         2       システムエラー
+ **********************************************************/
+function write_global($filename, $data, $tmplfilename)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+    $dirname = dirname($filename);
+    $tmpfile = basename($filename);
+
+    /* ファイルが書き込み可能か調べる */
+    if (!is_writable($filename)) {
+       return 1;
+    }
+
+    /* conf.tmpl取得 */
+    $conftmpl = file_get_contents($tmplfilename);
+    if ($conftmpl === FALSE) {
+        return 2;
+    }
+    $data["notification_email"] = implode("\n", $data["notification_email"]);
+
+    /* tagの置換 */
+    $tag["<<NOTITICATION_EMAIL>>"] = "notification_email {\n$data[notification_email]\n}";
+    $tag["<<NOTITICATION_EMAIL_FROM>>"] = "notification_email_from $data[notification_email_from]";
+    $tag["<<SMTP_SERVER>>"] = "smtp_server $data[smtp_server]";
+    $tag["<<SMTP_CONNECT_TIMEOUT>>"] = "smtp_connect_timeout $data[smtp_connect_timeout]";
+
+    $conftemp = change_template_tag($conftmpl, $tag);
+
+    $tmpfname = tempnam($dirname, $tmpfile);
+    if ($tmpfname === FALSE) {
+        return 1;
+    }
+
+    $fh = fopen($tmpfname, "w");
+    if ($fh === FALSE) {
+        return 1;
+    }
+        
+    $ret = fwrite($fh, $conftemp);
+    if ($ret === FALSE) {
+        return 1;
+    }
+    fclose($fh);
+
+    $ret = rename($tmpfname, $filename);
+    if ($ret === FALSE) {
+        return 1;
+    }
+    return 0;
+}
+
+
+/*********************************************************
+ * check_mail()
+ *
+ * メールアドレス形式のチェック
+ *
+ * [引数]
+ *      $mail        メールアドレス
+ * [返り値]
+ *      TRUE         正常
+ *      FALSE        異常
+ **********************************************************/
+function check_mail($mail)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* メールアドレスの長さチェック */
+    if (strlen($mail) > MAXMAIL) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    /* @で二つに区切れるかのチェック */
+    $buf = explode('@', $mail, 2);
+    if (count($buf) != 2 || $buf[0] == "" || $buf[1] == "") {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+    }
+
+    /* @より前のチェック */
+    /* 半角英小文字、数字、以下の記号のみ許可 */
+    $num = "0123456789";
+    $sl = "abcdefghijklmnopqrstuvwxyz";
+    $ll = strtoupper($sl);
+    $sym = "!#$%&'*+-/=?^_{}~.";
+    $allow_letter = $num . $sl . $ll . $sym;
+    if (strspn($buf[0], $allow_letter) != strlen($buf[0])) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    /* web.confのLocalPartRFCCheckが1の場合 */
+    if (isset($web_conf["iluka"]["localpartrfccheck"]) === TRUE &&
+              $web_conf["iluka"]["localpartrfccheck"] === "1") {
+        /* ローカルパートの形式チェック */
+        if (check_localpart($buf[0]) === FALSE) {
+            $err_msg = $msgarr['01018'][SCREEN_MSG];
+            $log_msg = $msgarr['01018'][LOG_MSG];
+            return FALSE;
+        }
+    }
+
+    /*  @より後ろのチェック */
+    if (strlen($buf[1]) < 3) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    $sym = "-_.";
+    $must = ".";
+    $must_not = "..";
+
+    /* ドットから始まればエラー */
+    if (substr($buf[1], 0, 1) == $must) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    /* 1個以上のドットが必須。 */
+    if (strpos($buf[1], $must) === FALSE) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    /* 2個以上のドットの連続は禁止。 */
+    if (strpos($buf[1], $must_not) !== FALSE) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    $allow_letter = $num . $sl . $ll . $sym;
+    $length = strlen($buf[1]);
+    if (strspn($buf[1], $allow_letter) != $length) {
+        $err_msg = $msgarr['01018'][SCREEN_MSG];
+        $log_msg = $msgarr['01018'][LOG_MSG];
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*********************************************************
+ * check_localpart()
+ *
+ * メールアドレスのローカルパートチェック
+ *
+ * [引数]
+ *      $local       メールアドレス
+ * [返り値]
+ *      TRUE         正常
+ *      FALSE        異常
+ **********************************************************/
+function check_localpart($local)
+{
+    /* 拒否文字定義 */
+    $dot_atom = ".";
+    $dot_continuous = "..";
+
+    /* 先頭に.がある場合は形式エラー */
+    if (substr($local, 0, 1) === $dot_atom) {
+        return FALSE;
+    }
+
+    /* 末尾に.がある場合は形式エラー */
+    if (substr($local, -1, 1) === $dot_atom) {
+        return FALSE;
+    }
+
+    /* .が連続する場合は形式エラー */
+    if (strpos($local, $dot_continuous)) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**********************************************************
+ * read_vslist
+ *
+ * virtual_server.confの読み込み
+ *
+ * [引数]
+ *        $file            virtual_server.confのパス
+ *        &$data           バーチャルサーバの情報
+ * [返り値]
+ *        TRUE             正常
+ *        FALSE            エラー
+ *
+ **********************************************************/
+function read_vslist($file, &$data)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+
+    $fh = fopen($file, "r");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28055'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28055'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    $key = 0;
+    while ($result = fgets($fh)) {
+        $result = trim($result);
+        $lines = explode("/", $result, 2);
+        if ($lines[0] === $result) {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+
+        /* 形式チェック */
+        if ($lines[0] !== 'include virtual_server' && $lines[0] !== '#include virtual_server') {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+            
+        /* disable:enable取得 */
+        $lines_able = strncmp('#', $lines[0], 1);
+        if ($lines_able === 0) {
+            $data[$key]["able"] = "disable";
+        } else {
+            $data[$key]["able"] = "enable";
+        }
+
+        /* IPアドレス取得 */
+        $lines_ip = explode("_", $lines[1], 3);
+        if ($lines_ip[0] === $lines[1]) {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        if (!filter_var($lines_ip[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $data[$key]["ipaddress"] = $lines_ip[0];
+        
+
+         /* ポート番号取得 */
+        $lines_port = $lines_ip[1];
+        $ret = ctype_digit($lines_port);
+        if ($ret === FALSE) {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $data[$key]["port"] = $lines_port;
+
+	/* プロトコル取得 */
+	$lines_protocol = explode(".", $lines_ip[2], 2);
+        if (count($lines_protocol) !== 2) {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        if (ctype_digit($lines_protocol[0]) === false) {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        if ($lines_protocol[0] !== "0" && $lines_protocol[0] !== "1") {
+            $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28060'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $data[$key]["protocol"] = $lines_protocol[0];
+
+        $key++;
+    }
+    fclose($fh);
+    return TRUE;
+}
+
+
+/**********************************************************
+ * write_vslist
+ *
+ * virtual_server.confの書き込み
+ *
+ * [引数]
+ *        $file           virtual_server.confのパス
+ *        &$data           virtual_server.confの内容
+ * [返り値]
+ *        TRUE             正常
+ *        FALSE            失敗 
+ **********************************************************/
+
+function write_vslist ($file, &$data)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+    $dirname = dirname($file);
+    $vsfilename = basename($file);
+    $write_data = "";
+
+    /* 書き込み可能かの確認 */
+    if (!is_writable($file)) {
+        $err_msg = sprintf($msgarr['28059'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28059'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    /* 書き込み用データの作成 */
+    $cht = count($data);
+    for ($i = 0; $i < $cht; $i++) {
+        if ($data[$i]["able"] === 'disable') {
+            $write_data .= "#";
+        }
+	$write_data .= "include virtual_server/".$data[$i]["ipaddress"]."_".$data[$i]["port"].
+                       "_".$data[$i]["protocol"].".conf\n";
+    }
+
+    /* 一時ファイルに書き込む */
+    $tmpfname = tempnam($dirname, $vsfilename);
+    if ($tmpfname === FALSE) {
+        $err_msg = sprintf($msgarr['28059'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28059'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    $fh = fopen($tmpfname, "w");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28059'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28059'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    $ret = fwrite($fh, $write_data);
+    if ($ret === FALSE) {
+        $err_msg = sprintf($msgarr['28059'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28059'][LOG_MSG], $file);
+        fclose($fh);
+        return FALSE;
+    }
+    fclose($fh);
+
+    /* 一時ファイルと置き換える */
+    $ret = rename($tmpfname, $file);
+    if ($ret === FALSE) {
+        $err_msg = sprintf($msgarr['28059'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28059'][LOG_MSG], $file);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/***********************************************************
+ * reload_status
+ *
+ * リロードするか否かの決定
+ *
+ * [引数]
+ *        $filename           virtual_server.confのパス
+ *        $iport              対象行のIP_PORT
+ * [返り値]
+ *        $tag                保持されたタグ
+ **********************************************************/
+function reload_status ($filename, $iport)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    $result = read_vslist($filename, $vsconfdata);
+    if ($result === FALSE) {
+        return FALSE;
+    }
+
+    $cht = count($vsconfdata);
+
+    for ($i = 0; $i < $cht; $i++) {
+        $check = $vsconfdata[$i]["ipaddress"]."_".$vsconfdata[$i]["port"].
+                 "_".$vsconfdata[$i]["protocol"];
+        if ($check == $iport) {
+            $status = $vsconfdata[$i]["able"];
+            break;
+        }
+    }
+
+    if ($i === $cht){
+        $err_msg = sprintf($msgarr['28060'][SCREEN_MSG], $filename);
+        $log_msg = sprintf($msgarr['28060'][LOG_MSG], $filename);
+        return FALSE;
+    }
+
+    /* 対象行のstatusが有効ならばリロード */
+    if ($status === "enable") {
+        $result = reload_keepalived();
+        if ($result === FALSE)  {
+            result_log(OPERATION . ":NG:" . $log_msg, LOG_ERR);
+            syserr_display();
+            exit(0);
+        }
+    }
+
+    return TRUE;
+}
+
+/**********************************************************
+ * reload_keepalived
+ *
+ * keepalivedのリロード
+ *
+ * [引数]
+ *        無し
+ * [返り値]
+ *        TRUE             正常
+ *        FALSE            失敗
+ **********************************************************/
+function reload_keepalived ()
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    system($web_conf["iluka"]["keepalivedreloadscript"], $result);
+    if ($result !== 0) {
+        $err_msg = $msgarr['28051'][SCREEN_MSG];
+        $log_msg = $msgarr['28051'][LOG_MSG];
+        return FALSE;
+    }
+    return TRUE;
+}
+
+
+/**********************************************************
+ * lock_file
+ *
+ * ファイルのロック
+ *
+ * [引数]
+ *        なし 
+ * [返り値]
+ *        FALSE            失敗
+ **********************************************************/
+function lock_file ()
+{
+
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    $file = $web_conf["iluka"]["lockfile"];
+    $lock_fh = fopen($file, "w");
+    if ($lock_fh === FALSE) {
+        $err_msg = $msgarr['28067'][SCREEN_MSG];
+        $log_msg = $msgarr['28067'][LOG_MSG];
+        return FALSE;
+    } 
+
+    $result = flock($lock_fh, LOCK_EX);
+    if ($result === FALSE) {
+        $err_msg = $msgarr['28067'][SCREEN_MSG];
+        $log_msg = $msgarr['28067'][LOG_MSG];
+        return FALSE;
+    }
+    return $lock_fh;
+}
+
+/**********************************************************
+ * unlock_file
+ *
+ * ファイルのアンロック
+ *
+ * [引数]
+ *        $lock_fh         アンロックするファイルハンドル
+ * [返り値]
+ *        TRUE             成功
+ *        FALSE            失敗
+ **********************************************************/
+function unlock_file ($lock_fh)
+{
+
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    $result = flock($lock_fh, LOCK_UN);
+    if ($result === FALSE) {
+        $err_msg = $msgarr['28067'][SCREEN_MSG];
+        $log_msg = $msgarr['28067'][LOG_MSG];
+        return FALSE;
+    }
+    fclose($lock_fh);
+    return TRUE;
+}
+
+
+/**********************************************************
+ * check_form
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_form ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* IPアドレスの形式チェック */
+    if ($post["ipaddress"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "IPアドレス");
+        return FALSE;
+    }
+    if (strlen($post["ipaddress"]) > 39) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "IPアドレス");
+        return FALSE;
+    }
+    if (!filter_var($post["ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "IPアドレス");
+        return FALSE;
+    }
+
+    /* ポート番号の形式チェック */
+    if ($post["port"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+    if (strlen($post["port"]) > 5) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+    if (ctype_digit($post["port"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+    if ($post["port"] > 65535) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+
+    /* 監視間隔の形式チェック */
+    if ($post["delay_loop"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "監視間隔");
+        return FALSE;
+    }
+    if (strlen($post["delay_loop"]) > 10) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "監視間隔");
+        return FALSE;
+    }
+    if (ctype_digit($post["delay_loop"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "監視間隔");
+        return FALSE;
+    }
+
+    /* プロトコルの形式チェック */
+    if ($post["protocol"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "プロトコル");
+        return FALSE;
+    }
+    if (strlen($post["protocol"]) > 1) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "プロトコル");
+        return FALSE;
+    }
+    if (ctype_digit($post["protocol"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "プロトコル");
+        return FALSE;
+    }
+    if ($post["protocol"] > 2) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "プロトコル");
+        return FALSE;
+    }
+
+    /* 分散アルゴリズムの形式チェック */
+    if ($post["lb_algo"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "分散アルゴリズム");
+        return FALSE;
+    }
+    if (strlen($post["lb_algo"]) > 1) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "分散アルゴリズム");
+        return FALSE;
+    }
+    if (ctype_digit($post["lb_algo"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "分散アルゴリズム");
+        return FALSE;
+    }
+    if ($post["lb_algo"] > 6) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "分散アルゴリズム");
+        return FALSE;
+    }
+    /* 転送方法の形式チェック */
+    if ($post["lb_kind"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "転送方法");
+        return FALSE;
+    }
+    if (strlen($post["lb_kind"]) > 1) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "転送方法");
+        return FALSE;
+    }
+    if (ctype_digit($post["lb_kind"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "転送方法");
+        return FALSE;
+    }
+    if ($post["lb_kind"] > 2) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "転送方法");
+        return FALSE;
+    }
+
+    /* タイムアウトの形式チェック */
+    if ($post["persistence_timeout"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイムアウト");
+        return FALSE;
+    }
+    if (strlen($post["persistence_timeout"]) > 5) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイムアウト");
+        return FALSE;
+    }
+    if (ctype_digit($post["persistence_timeout"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイムアウト");
+        return FALSE;
+    }
+    if ($post["persistence_timeout"] > 65535) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイムアウト");
+        return FALSE;
+    }
+
+    /* バーチャルホスト */
+    if (strlen($post["virtualhost"]) > 256) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "バーチャルホスト");
+        return FALSE;
+    }
+    $num = "0123456789";
+    $sl = "abcdefghijklmnopqrstuvwxyz";
+    $ll = strtoupper($sl);
+    $sym = "!#$%&'*+-/=?^_{}~.";
+    $allow_letter = $num . $sl . $ll . $sym;
+    if (strspn($post["virtualhost"], $allow_letter) != strlen($post["virtualhost"])) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "バーチャルホスト");
+        return FALSE;
+    }
+
+    /* SorryサーバIPアドレスの形式チェック */
+    if ($post["sorry_server_ipaddress"] !== "") {
+        if (strlen($post["sorry_server_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "SorryサーバIPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["sorry_server_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "SorryサーバIPアドレス");
+            return FALSE;
+        }
+
+    /* Sorryサーバポート番号の形式チェック */
+        if ($post["sorry_server_port"] === "") {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "Sorryサーバポート番号");
+            return FALSE;
+        }
+    }
+    if ($post["sorry_server_port"] !== "") {
+        if ($post["sorry_server_ipaddress"] === "") {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "SorryサーバIPアドレス");
+            return FALSE;
+        }
+        if (strlen($post["sorry_server_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "Sorryサーバポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["sorry_server_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "Sorryサーバポート番号");
+            return FALSE;
+        }
+        if ($post["sorry_server_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "Sorryサーバポート番号");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/**********************************************************
+ * read_rslist
+ *
+ * real_server.confの読み込み
+ *
+ * [引数]
+ *        $file            real_server.confのパス
+ *        &$data           バーチャルサーバの情報
+ * [返り値]
+ *        TRUE             正常
+ *        FALSE            エラー
+ *
+ **********************************************************/
+function read_rslist($file, &$data)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    // バーチャルサーバリストの初期化
+    $data = array();
+
+    /* ファイルの有無を確認 */
+    if (!file_exists($file)) {
+        return TRUE;
+    }
+
+    $fh = fopen($file, "r");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28074'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28074'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    $key = 0;
+    while ($result = fgets($fh)) {
+    
+        $result = trim($result);
+        $lines = explode(" ", $result, 2);
+        if ($lines[0] === $result) {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+
+        if ($lines[0] !== 'include' && $lines[0] !== '#include') {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+   
+        /* disable:enable取得 */
+        $lines_able = strncmp('#', $lines[0], 1);
+        if ($lines_able === 0) {
+            $data[$key]["rsable"] = "disable";
+        } else {
+            $data[$key]["rsable"] = "enable";
+        }
+
+        /* 先頭が "./" であること */
+        if (strncmp($lines[1], "./", 2)) {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $lines[1] = substr($lines[1], 2);
+
+        /* IPアドレス取得 */
+        $lines_ip = explode("_", $lines[1], 2);
+        if ($lines_ip[0] === $lines[1]) {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        if (!filter_var($lines_ip[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $data[$key]["rs_ipaddress"] = $lines_ip[0];
+
+         /* ポート番号取得 */
+        $lines_port = explode(".", $lines_ip[1], 2);
+        if ($lines_port[0] === $lines_ip[1]) {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $ret = ctype_digit($lines_port[0]);
+        if ($ret === FALSE) {
+            $err_msg = sprintf($msgarr['28075'][SCREEN_MSG], $file);
+            $log_msg = sprintf($msgarr['28075'][LOG_MSG], $file);
+            fclose($fh);
+            return FALSE;
+        }
+        $data[$key]["rs_port"] = $lines_port[0];
+        $key++;
+    }
+    fclose($fh);
+    return TRUE;
+}
+
+/**********************************************************
+ * write_rslist
+ *
+ * real_server.confの書き込み
+ *
+ * [引数]
+ *        $file            real_server.confのパス
+ *        &$data           real_server.confの内容
+ * [返り値]
+ *        TRUE             正常
+ *        FALSE            失敗
+ **********************************************************/
+
+function write_rslist ($file, &$data)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+    $dirname = dirname($file);
+    $rsfilename = basename($file);
+    $write_data = "";
+
+    /* 書き込み可能かの確認 */
+    if (!is_writable($file)) {
+        $err_msg = sprintf($msgarr['28081'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28081'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    /* 書き込み用データの作成 */
+    $cht = count($data);
+    for ($i = 0; $i < $cht; $i++) {
+        if ($data[$i]["rsable"] === 'disable') {
+            $write_data .= "#";
+        }
+        $write_data .= "include ./".$data[$i]["rs_ipaddress"]."_".$data[$i]["rs_port"].".conf\n";
+    }
+
+    /* 一時ファイルに書き込む */
+    $tmpfname = tempnam($dirname, $rsfilename);
+    if ($tmpfname === FALSE) {
+        $err_msg = sprintf($msgarr['28081'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28081'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    $fh = fopen($tmpfname, "w");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28081'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28081'][LOG_MSG], $file);
+        return FALSE;
+    }
+
+    $ret = fwrite($fh, $write_data);
+    if ($ret === FALSE) {
+        $err_msg = sprintf($msgarr['28081'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28081'][LOG_MSG], $file);
+        fclose($fh);
+        return FALSE;
+    }
+    fclose($fh);
+
+    /* 一時ファイルと置き換える */
+    $ret = rename($tmpfname, $file);
+    if ($ret === FALSE) {
+        $err_msg = sprintf($msgarr['28081'][SCREEN_MSG], $file);
+        $log_msg = sprintf($msgarr['28081'][LOG_MSG], $file);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/**********************************************************
+ * rs_check_form
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function rs_check_form ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+
+    /* IPアドレスの形式チェック */
+    if ($post["rs_ipaddress"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "IPアドレス");
+        return FALSE;
+    }
+    if (strlen($post["rs_ipaddress"]) > 39) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "IPアドレス");
+        return FALSE;
+    }
+    if (!filter_var($post["rs_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "IPアドレス");
+        return FALSE;
+    }
+
+    /* ポート番号の形式チェック */
+    if ($post["rs_port"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+    if (strlen($post["rs_port"]) > 5) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+    if (ctype_digit($post["rs_port"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+    if ($post["rs_port"] > 65535) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ポート番号");
+        return FALSE;
+    }
+
+    /* 重み付けの形式チェック */
+    if ($post["weighting"] !== "") {
+        if (strlen($post["weighting"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "重み付け");
+            return FALSE;
+        }
+        if (ctype_digit($post["weighting"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "重み付け");
+            return FALSE;
+        }
+    }
+
+    /* ヘルスチェックの形式チェック */
+    if ($post["h_check"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+    if (strlen($post["h_check"]) > 1) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+    if (ctype_digit($post["h_check"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+    if ($post["h_check"] > 6) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+
+    /* 形式の決定 */
+    if ($post["h_check"] == 0 || $post["h_check"] == 1) {
+        if (check_http($post) === FALSE) {
+            return FALSE;
+        }
+
+    } elseif ($post["h_check"] == 2) {
+        if (check_tcp($post) === FALSE) {
+            return FALSE;
+        }
+
+    } elseif ($post["h_check"] == 3) {
+        if (check_smtp($post) === FALSE) {
+            return FALSE;
+        }
+
+    } elseif ($post["h_check"] == 4) {
+        if (check_misc($post) === FALSE) {
+            return FALSE;
+        }
+    } elseif ($post["h_check"] == 5) {
+        if (check_udp($post) === FALSE) {
+            return FALSE;
+        }
+    } elseif ($post["h_check"] == 6) {
+        if (check_dns($post) === FALSE) {
+            return FALSE;
+        }
+    } 
+
+    return TRUE;
+}
+
+
+/**********************************************************
+ * check_http
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_http ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* パスのチェック */
+    if ($post["http_path"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "パス");
+        return FALSE;
+    }
+    if (strlen($post["http_path"]) > 256) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "パス");
+        return FALSE;
+    }
+    $num = "0123456789";
+    $sl = "abcdefghijklmnopqrstuvwxyz";
+    $ll = strtoupper($sl);
+    $sym = "!#$%&()*+,-./:;<=>?@[]^_{|}~";	// " ' ` は禁止
+    $allow_letter = $num . $sl . $ll . $sym;
+    if (strspn($post["http_path"], $allow_letter) != strlen($post["http_path"])) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "パス");
+        return FALSE;
+    }
+
+    /* ダイジェストの形式チェック */
+    if ($post["http_digest"] !== "") {
+        if (strlen($post["http_digest"]) > 64) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ダイジェスト");
+            return FALSE;
+        }
+        $num = "0123456789";
+        $sl = "abcdef";
+        $ll = strtoupper($sl);
+        $allow_letter = $num . $sl . $ll;
+        if (strspn($post["http_digest"], $allow_letter) != strlen($post["http_digest"])) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ダイジェスト");
+            return FALSE;
+        }
+    }
+
+    /* ステータスの形式チェック */
+    if ($post["http_status_code"] !== "") {
+        if (strlen($post["http_status_code"]) > 7) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ステータス");
+            return FALSE;
+        }
+	$status = explode("-", $post["http_status_code"], 2);
+	if (count($status) > 2) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ステータス");
+            return FALSE;
+	}
+	if (ctype_digit($status[0]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ステータス");
+            return FALSE;
+	}
+	if ($status[0] > 999) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ステータス");
+            return FALSE;
+	}
+	if (isset($status[1])) {
+	    if (ctype_digit($status[1]) === FALSE) {
+                $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ステータス");
+                return FALSE;
+	    }
+	    if ($status[1] > 999) {
+                $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ステータス");
+                return FALSE;
+	    }
+	}
+    }
+
+    /* リトライ数の形式チェック */
+    if ($post["nb_get_retry"] !== "") {
+        if (strlen($post["nb_get_retry"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ数");
+            return FALSE;
+        }
+        if (ctype_digit($post["nb_get_retry"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ数");
+            return FALSE;
+        }
+    }
+
+    /* リトライ間隔の形式チェック */
+    if ($post["http_delay_retry"] !== "") {
+        if (strlen($post["http_delay_retry"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ間隔");
+            return FALSE;
+        }
+        if (ctype_digit($post["http_delay_retry"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ間隔");
+            return FALSE;
+        }
+    }
+
+    /* 接続先IPアドレスの形式チェック */
+    if ($post["http_connect_ipaddress"] !== "") {
+        if (strlen($post["http_connect_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["http_connect_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+    }
+
+    /* 接続先ポート番号の形式チェック */
+    if ($post["http_connect_port"] !== "") {
+        if (strlen($post["http_connect_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["http_connect_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if ($post["http_connect_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続元IPアドレスの形式チェック */
+    if ($post["http_connect_source_ipaddress"] !== "") {
+        if (strlen($post["http_connect_source_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["http_connect_source_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+    }
+    /* 接続元ポート番号の形式チェック */
+    if ($post["http_connect_source_port"] !== "") {
+        if (strlen($post["http_connect_source_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["http_connect_source_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if ($post["http_connect_source_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["http_connect_timeout"] !== "") {
+        if (strlen($post["http_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["http_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/**********************************************************
+ * check_tcp
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_tcp ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* 接続先IPアドレスの形式チェック */
+    if ($post["tcp_connect_ipaddress"] !== "") {
+        if (strlen($post["tcp_connect_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["tcp_connect_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+    }
+
+    /* 接続先ポート番号の形式チェック */
+    if ($post["tcp_connect_port"] !== "") {
+        if (strlen($post["tcp_connect_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["tcp_connect_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if ($post["tcp_connect_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続元IPアドレスの形式チェック */
+    if ($post["tcp_connect_source_ipaddress"] !== "") {
+        if (strlen($post["tcp_connect_source_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["tcp_connect_source_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+    }
+    /* 接続元ポート番号の形式チェック */
+    if ($post["tcp_connect_source_port"] !== "") {
+        if (strlen($post["tcp_connect_source_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["tcp_connect_source_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if ($post["tcp_connect_source_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["tcp_connect_timeout"] !== "") {
+        if (strlen($post["tcp_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["tcp_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/**********************************************************
+ * check_smtp
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_smtp ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* リトライ回数数の形式チェック */
+    if ($post["smtp_retry"] !== "") {
+        if (strlen($post["smtp_retry"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ回数");
+            return FALSE;
+        }
+        if (ctype_digit($post["smtp_retry"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ回数");
+            return FALSE;
+        }
+    }
+
+    /* リトライ間隔の形式チェック */
+    if ($post["smtp_delay_retry"] !== "") {
+        if (strlen($post["smtp_delay_retry"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ間隔");
+            return FALSE;
+        }
+        if (ctype_digit($post["smtp_delay_retry"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リトライ間隔");
+            return FALSE;
+        }
+    }
+
+    /* 接続先IPアドレスの形式チェック */
+    if ($post["smtp_connect_ipaddress"] !== "") {
+        if (strlen($post["smtp_connect_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["smtp_connect_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+    }
+
+    /* 接続先ポート番号の形式チェック */
+    if ($post["smtp_connect_port"] !== "") {
+        if (strlen($post["smtp_connect_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["smtp_connect_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if ($post["smtp_connect_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続元IPアドレスの形式チェック */
+    if ($post["smtp_connect_source_ipaddress"] !== "") {
+        if (strlen($post["smtp_connect_source_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["smtp_connect_source_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+    }
+    /* 接続元ポート番号の形式チェック */
+    if ($post["smtp_connect_source_port"] !== "") {
+        if (strlen($post["smtp_connect_source_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["smtp_connect_source_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if ($post["smtp_connect_source_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["smtp_connect_timeout"] !== "") {
+        if (strlen($post["smtp_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["smtp_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    /* HELOリクエストの形式チェック */
+    if ($post["helo_name"] !== "") {
+        if (strlen($post["helo_name"]) > 256) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "HELOリクエスト");
+            return FALSE;
+        }
+        $num = "0123456789";
+        $sl = "abcdefghijklmnopqrstuvwxyz";
+        $ll = strtoupper($sl);
+        $sym = "-_.";
+        $allow_letter = $num . $sl . $ll . $sym;
+        if (strspn($post["helo_name"], $allow_letter) != strlen($post["helo_name"])) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "HELOリクエスト");
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/**********************************************************
+ * check_misc
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_misc ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* スクリプトパスのチェック */
+    if ($post["misc_path"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+        return FALSE;
+    }
+    if (strlen($post["misc_path"]) > 256) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+        return FALSE;
+    }
+    $num = "0123456789";
+    $sl = "abcdefghijklmnopqrstuvwxyz";
+    $ll = strtoupper($sl);
+    $sym = "+,-./:=@_ \"";
+    $allow_letter = $num . $sl . $ll . $sym;
+    if (strspn($post["misc_path"], $allow_letter) != strlen($post["misc_path"])) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+        return FALSE;
+    }
+
+    /* ダブルクオートは先頭と末尾のみ許可 */
+    if (substr($post["misc_path"], 0, 1) === "\"") {
+        if (substr($post["misc_path"], -1, 1) !== "\"") {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+            return FALSE;
+        }
+
+	if (strpos(substr($post["misc_path"], 1, -1), "\"") !== false) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+            return FALSE;
+	}
+    } else {
+	if (strpos($post["misc_path"], "\"") !== false) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+            return FALSE;
+        }
+    }
+
+    /* 空白が含まれる場合、先頭と末尾がダブルクオートが必要 */
+    if (strpos($post["misc_path"], " ") !== false) {
+        if (substr($post["misc_path"], 0, 1) !== "\"") {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+            return FALSE;
+        }
+        if (substr($post["misc_path"], -1, 1) !== "\"") {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "スクリプトパス");
+            return FALSE;
+        }
+    }
+
+    /* タイムアウトの形式チェック */
+    if ($post["misc_timeout"] !== "") {
+        if (strlen($post["misc_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["misc_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイムアウト");
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/**********************************************************
+ * check_udp
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_udp($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* 接続先IPアドレスの形式チェック */
+    if ($post["udp_connect_ipaddress"] !== "") {
+        if (strlen($post["udp_connect_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["udp_connect_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+    }
+
+    /* 接続先ポート番号の形式チェック */
+    if ($post["udp_connect_port"] !== "") {
+        if (strlen($post["udp_connect_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["udp_connect_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if ($post["udp_connect_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続元IPアドレスの形式チェック */
+    if ($post["udp_connect_source_ipaddress"] !== "") {
+        if (strlen($post["udp_connect_source_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["udp_connect_source_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+    }
+    /* 接続元ポート番号の形式チェック */
+    if ($post["udp_connect_source_port"] !== "") {
+        if (strlen($post["udp_connect_source_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["udp_connect_source_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if ($post["udp_connect_source_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["udp_connect_timeout"] !== "") {
+        if (strlen($post["udp_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["udp_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["udp_connect_timeout"] !== "") {
+        if (strlen($post["udp_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["udp_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    /* リプライチェックの形式チェック */
+    if ($post["udp_connect_require_reply"] !== "") {
+        if (strlen($post["udp_connect_require_reply"]) > 1) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リプライチェック");
+            return FALSE;
+        }
+        if ($post["udp_connect_require_reply"] !== "0" && $post["udp_connect_require_reply"] !== "1") {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "リプライチェック");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/**********************************************************
+ * check_dns
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function check_dns($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* 接続先IPアドレスの形式チェック */
+    if ($post["dns_connect_ipaddress"] !== "") {
+        if (strlen($post["dns_connect_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["dns_connect_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先IPアドレス");
+            return FALSE;
+        }
+    }
+
+    /* 接続先ポート番号の形式チェック */
+    if ($post["dns_connect_port"] !== "") {
+        if (strlen($post["dns_connect_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["dns_connect_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+        if ($post["dns_connect_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続先ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続元IPアドレスの形式チェック */
+    if ($post["dns_connect_source_ipaddress"] !== "") {
+        if (strlen($post["dns_connect_source_ipaddress"]) > 39) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+        if (!filter_var($post["dns_connect_source_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元IPアドレス");
+            return FALSE;
+        }
+    }
+    /* 接続元ポート番号の形式チェック */
+    if ($post["dns_connect_source_port"] !== "") {
+        if (strlen($post["dns_connect_source_port"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if (ctype_digit($post["dns_connect_source_port"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+        if ($post["dns_connect_source_port"] > 65535) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続元ポート番号");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["dns_connect_timeout"] !== "") {
+        if (strlen($post["dns_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["dns_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    /* 接続タイムアウトの形式チェック */
+    if ($post["dns_connect_timeout"] !== "") {
+        if (strlen($post["dns_connect_timeout"]) > 3) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+        if (ctype_digit($post["dns_connect_timeout"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "接続タイムアウト");
+            return FALSE;
+        }
+    }
+
+    /* DNSタイプの形式チェック */
+    if ($post["dns_type"] !== "") {
+        switch ($post["dns_type"]) {
+            case "SOA":
+            case "A":
+            case "NS":
+            case "CNAME":
+            case "MX":
+            case "TXT":
+            case "AAAA":
+                break;
+	    default:
+                $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "タイプ");
+                return FALSE;
+        }
+    }
+
+    /* DNS名前の形式チェック */
+    if ($post["dns_name"] !== "") {
+        if (strlen($post["dns_name"]) > 512) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "名前");
+            return FALSE;
+        }
+        $num = "0123456789";
+        $sl = "abcdefghijklmnopqrstuvwxyz";
+        $ll = strtoupper($sl);
+        $sym = "!#$%&()*+,-./:;<=>?@[]^_{|}~";	// " ' ` は禁止
+        $allow_letter = $num . $sl . $ll . $sym;
+        if (strspn($post["dns_name"], $allow_letter) != strlen($post["dns_name"])) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "名前");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/***********************************************************
+ * iluka_location()
+ *
+ * ロケーションを行う
+ *
+ * [引数]
+ *      $url
+ *      $msg
+ *      $post        ポストしたい値(キーがname, 値がvalue)
+ *
+ * [返り値]
+ *      なし
+ ************************************************************/
+function iluka_location($url, $msg = "", $post = array())
+{
+    global $sesskey;
+
+    /* セッション */
+    $hidden = "<input type=\"hidden\" name=\"sk\" value=\"" .
+               $sesskey . "\">";
+
+    /* メッセージ */
+    $message = "";
+    if (!is_null($msg)) {
+        $message = "<input type=\"hidden\" " .
+                              "name=\"msg\" value=\"$msg\">";
+    }
+
+    $values = "";
+    if (count($post) != 0) {
+        foreach ($post as $name => $value) {
+            $e_name = escape_html($name);
+            $e_val  = escape_html($value);
+            $values .= "<input type=\"hidden\" " .
+                      "name=\"$e_name\" value=\"$e_val\">";
+        }
+    }
+
+    /* HTML作成 */
+    display_header();
+    print <<<EOD
+<script type="text/javascript">
+<!--
+function msgConfirm(msg) {
+        return(window.confirm(msg));
+}
+
+function dgpSubmit(url) {
+    document.common.action = url;
+    document.common.submit();
+}
+// -->
+</script>
+<body onload="dgpSubmit('$url')">
+処理中...
+<form method="post" name="common">
+    $hidden
+    $message
+    $values
+</form>
+</body>
+</html>
+EOD;
+    exit;
+
+}
+
+/***********************************************************
+ * make_rsconf
+ *
+ * リアルサーバ設定ファイル作成のmain処理
+ *
+ * [引数]
+ *       $rsdir              作成するファイルのディレクトリパス
+ *       $rsfile             作成するファイルのファイルパス
+ *       $conftmpl           作成するファイルの中身  
+ * [返り値]
+ *       TRUE                正常 
+ *       FALSE               異常 
+ **********************************************************/
+function make_rsconf ($rsdir, $rsfile, $conftmpl)
+{
+
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* ファイル作成 */
+    $tmpfname = tempnam($rsdir, $rsfile);
+    if ($tmpfname === FALSE) {
+        $err_msg = sprintf($msgarr['28083'][SCREEN_MSG], $rsfile);
+        $log_msg = sprintf($msgarr['28083'][LOG_MSG], $rsfile);
+        return FALSE;
+    }
+
+    $fh = fopen($tmpfname, "w");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28083'][SCREEN_MSG], $rsfile);
+        $log_msg = sprintf($msgarr['28083'][LOG_MSG], $rsfile);
+        return FALSE;
+    }
+
+    if (fwrite($fh, $conftmpl) === FALSE) {
+        $err_msg = sprintf($msgarr['28083'][SCREEN_MSG], $rsfile);
+        $log_msg = sprintf($msgarr['28083'][LOG_MSG], $rsfile);
+        return FALSE;
+    }
+    fclose($fh);
+
+    if (rename($tmpfname, $rsfile) === FALSE) {
+        $err_msg = sprintf($msgarr['28083'][SCREEN_MSG], $rsfile);
+        $log_msg = sprintf($msgarr['28083'][LOG_MSG], $rsfile);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************
+ * replace_tmpls
+ *
+ * リアルサーバ設定ファイル用テンプレート作成
+ *
+ * [引数]
+ *       $post         入力された値
+ *       &$conftmpl    完成したテンプレート 
+ * [返り値]
+ *       TRUE          成功
+ *       FALSE         失敗
+ **********************************************************/
+function replace_tmpls ($post, &$conftmpl)
+{
+
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+    global $tmpl_list;
+
+    $RSconf = "../../../../tmpl/iluka/real_server.conf.tmpl";
+
+    $health_tmpl = $tmpl_list[$post["h_check"]];
+    $healthtmpl  = file_get_contents($health_tmpl);
+
+    if ($healthtmpl === FALSE) {
+        $err_msg = sprintf($msgarr['28054'][SCREEN_MSG], $health_tmpl);
+        $log_msg = sprintf($msgarr['28054'][LOG_MSG], $health_tmpl);
+        return FALSE;
+    }
+
+    /* httpとsslの変換 */
+    if ($post["h_check"] == 0 || $post["h_check"] == 1) {
+        $tag["<<PATH>>"] = "path ".$post["http_path"];
+
+        if ($post["http_digest"] == "") {
+            $tag["<<DIGEST>>"] = "";
+        } else {
+            $tag["<<DIGEST>>"] = "digest ".$post["http_digest"];
+        }
+
+        if ($post["http_status_code"] == "") {
+            $tag["<<STATUS_CODE>>"] = "";
+        } else {
+            $tag["<<STATUS_CODE>>"] = "status_code ".$post["http_status_code"];
+        }
+
+        if ($post["nb_get_retry"] == "") {
+            $tag["<<NB_GET_RETRY>>"] = "";
+        } else {
+            $tag["<<NB_GET_RETRY>>"] = "nb_get_retry ".$post["nb_get_retry"];
+        }
+
+
+        if ($post["http_delay_retry"] == "") {
+            $tag["<<DELAY_BEFORE_RETRY>>"] = "";
+        } else {
+            $tag["<<DELAY_BEFORE_RETRY>>"] = "delay_before_retry ".$post["http_delay_retry"];
+        }
+
+        if ($post["http_connect_ipaddress"] == "") {
+            $tag["<<CONNECT_IP>>"] = "";
+        } else {
+            $tag["<<CONNECT_IP>>"] = "connect_ip ".$post["http_connect_ipaddress"];
+        }
+
+        if ($post["http_connect_port"] == "") {
+            $tag["<<CONNECT_PORT>>"] = "";
+        } else {
+            $tag["<<CONNECT_PORT>>"] = "connect_port ".$post["http_connect_port"];
+        }
+
+        if ($post["http_connect_source_ipaddress"] == "") {
+            $tag["<<BINDTO>>"] = "";
+        } else {
+            $tag["<<BINDTO>>"] = "bindto ".$post["http_connect_source_ipaddress"];
+        }
+
+        if ($post["http_connect_source_port"] == "") {
+            $tag["<<BIND_PORT>>"] = "";
+        } else {
+            $tag["<<BIND_PORT>>"] = "bind_port ".$post["http_connect_source_port"];
+        }
+
+        if ($post["http_connect_timeout"] == "") {
+            $tag["<<CONNECT_TIMEOUT>>"] = "";
+        } else {
+            $tag["<<CONNECT_TIMEOUT>>"] = "connect_timeout ".$post["http_connect_timeout"];
+        }
+    }
+
+    /* tcpの変換 */
+    if ($post["h_check"] == 2) {
+        if ($post["tcp_connect_ipaddress"] == "") {
+            $tag["<<CONNECT_IP>>"] = "";
+        } else {
+            $tag["<<CONNECT_IP>>"] = "connect_ip ".$post["tcp_connect_ipaddress"];
+        }
+
+        if ($post["tcp_connect_port"] == "") {
+            $tag["<<CONNECT_PORT>>"] = "";
+        } else {
+            $tag["<<CONNECT_PORT>>"] = "connect_port ".$post["tcp_connect_port"];
+        }
+
+        if ($post["tcp_connect_source_ipaddress"] == "") {
+            $tag["<<BINDTO>>"] = "";
+        } else {
+            $tag["<<BINDTO>>"] = "bindto ".$post["tcp_connect_source_ipaddress"];
+        }
+
+        if ($post["tcp_connect_source_port"] == "") {
+            $tag["<<BIND_PORT>>"] = "";
+        } else {
+            $tag["<<BIND_PORT>>"] = "bind_port ".$post["tcp_connect_source_port"];
+        }
+
+        if ($post["tcp_connect_timeout"] == "") {
+            $tag["<<CONNECT_TIMEOUT>>"] = "";
+        } else {
+            $tag["<<CONNECT_TIMEOUT>>"] = "connect_timeout ".$post["tcp_connect_timeout"];
+        }
+    }
+
+    /* smtpの変換 */
+    if ($post["h_check"] == 3) {
+        if ($post["smtp_connect_ipaddress"] == "") {
+            $tag["<<CONNECT_IP>>"] = "";
+        } else {
+            $tag["<<CONNECT_IP>>"] = "connect_ip ".$post["smtp_connect_ipaddress"];
+        }
+
+        if ($post["smtp_connect_port"] == "") {
+            $tag["<<CONNECT_PORT>>"] = "";
+        } else {
+            $tag["<<CONNECT_PORT>>"] = "connect_port ".$post["smtp_connect_port"];
+        }
+
+        if ($post["smtp_connect_source_ipaddress"] == "") {
+            $tag["<<BINDTO>>"] = "";
+        } else {
+            $tag["<<BINDTO>>"] = "bindto ".$post["smtp_connect_source_ipaddress"];
+        }
+
+        if ($post["smtp_connect_source_port"] == "") {
+            $tag["<<BIND_PORT>>"] = "";
+        } else {
+            $tag["<<BIND_PORT>>"] = "bind_port ".$post["smtp_connect_source_port"];
+        }
+
+        if ($post["smtp_connect_timeout"] == "") {
+            $tag["<<CONNECT_TIMEOUT>>"] = "";
+        } else {
+            $tag["<<CONNECT_TIMEOUT>>"] = "connect_timeout ".$post["smtp_connect_timeout"];
+        }
+
+        if ($post["smtp_retry"] == "") {
+            $tag["<<RETRY>>"] = "";
+        } else {
+            $tag["<<RETRY>>"] = "retry ".$post["smtp_retry"];
+        }
+
+        if ($post["smtp_delay_retry"] == "") {
+            $tag["<<DELAY_BEFORE_RETRY>>"] = "";
+        } else {
+            $tag["<<DELAY_BEFORE_RETRY>>"] = "delay_before_retry ".$post["smtp_delay_retry"];
+        }
+
+        if ($post["helo_name"] == "") {
+            $tag["<<HELO_NAME>>"] = "";
+        } else {
+            $tag["<<HELO_NAME>>"] = "helo_name ".$post["helo_name"];
+        }
+    }
+
+    /* miscの変換 */
+    if ($post["h_check"] == 4) {
+
+        $tag["<<MISC_PATH>>"] = "misc_path ".$post["misc_path"];
+
+        if ($post["misc_timeout"] == "") {
+            $tag["<<MISC_TIMEOUT>>"] = "";
+        } else {
+            $tag["<<MISC_TIMEOUT>>"] = "misc_timeout ".$post["misc_timeout"];
+        }
+    }
+
+    /* udpの変換 */
+    if ($post["h_check"] == 5) {
+        if ($post["udp_connect_ipaddress"] == "") {
+            $tag["<<CONNECT_IP>>"] = "";
+        } else {
+            $tag["<<CONNECT_IP>>"] = "connect_ip ".$post["udp_connect_ipaddress"];
+        }
+
+        if ($post["udp_connect_port"] == "") {
+            $tag["<<CONNECT_PORT>>"] = "";
+        } else {
+            $tag["<<CONNECT_PORT>>"] = "connect_port ".$post["udp_connect_port"];
+        }
+
+        if ($post["udp_connect_source_ipaddress"] == "") {
+            $tag["<<BINDTO>>"] = "";
+        } else {
+            $tag["<<BINDTO>>"] = "bindto ".$post["udp_connect_source_ipaddress"];
+        }
+
+        if ($post["udp_connect_source_port"] == "") {
+            $tag["<<BIND_PORT>>"] = "";
+        } else {
+            $tag["<<BIND_PORT>>"] = "bind_port ".$post["udp_connect_source_port"];
+        }
+
+        if ($post["udp_connect_timeout"] == "") {
+            $tag["<<CONNECT_TIMEOUT>>"] = "";
+        } else {
+            $tag["<<CONNECT_TIMEOUT>>"] = "connect_timeout ".$post["udp_connect_timeout"];
+        }
+
+        if ($post["udp_connect_require_reply"] == "0") {
+            $tag["<<REQUIRE_REPLY>>"] = "";
+        } else {
+            $tag["<<REQUIRE_REPLY>>"] = "require_reply";
+	}
+    }
+
+    /* dns_checkの変換 */
+    if ($post["h_check"] == 6) {
+        if ($post["dns_connect_ipaddress"] == "") {
+            $tag["<<CONNECT_IP>>"] = "";
+        } else {
+            $tag["<<CONNECT_IP>>"] = "connect_ip ".$post["dns_connect_ipaddress"];
+        }
+
+        if ($post["dns_connect_port"] == "") {
+            $tag["<<CONNECT_PORT>>"] = "";
+        } else {
+            $tag["<<CONNECT_PORT>>"] = "connect_port ".$post["dns_connect_port"];
+        }
+
+        if ($post["dns_connect_source_ipaddress"] == "") {
+            $tag["<<BINDTO>>"] = "";
+        } else {
+            $tag["<<BINDTO>>"] = "bindto ".$post["dns_connect_source_ipaddress"];
+        }
+
+        if ($post["dns_connect_source_port"] == "") {
+            $tag["<<BIND_PORT>>"] = "";
+        } else {
+            $tag["<<BIND_PORT>>"] = "bind_port ".$post["dns_connect_source_port"];
+        }
+
+        if ($post["dns_connect_timeout"] == "") {
+            $tag["<<CONNECT_TIMEOUT>>"] = "";
+        } else {
+            $tag["<<CONNECT_TIMEOUT>>"] = "connect_timeout ".$post["dns_connect_timeout"];
+        }
+
+        if ($post["dns_type"] == "") {
+            $tag["<<DNS_TYPE>>"] = "";
+        } else {
+            $tag["<<DNS_TYPE>>"] = "type " . $post["dns_type"];
+	}
+
+        if ($post["dns_name"] == "") {
+            $tag["<<DNS_NAME>>"] = "";
+        } else {
+            $tag["<<DNS_NAME>>"] = "name " . $post["dns_name"];
+	}
+    }
+
+    $health_check_tmpl= change_template_tag($healthtmpl, $tag);
+
+    $rsconftmpl = file_get_contents($RSconf);
+    if ($rsconftmpl === FALSE) {
+        $err_msg = sprintf($msgarr['28070'][SCREEN_MSG], $RSconf);
+        $log_msg = sprintf($msgarr['28070'][LOG_MSG], $RSconf);
+        return FALSE;
+    }
+
+    $tag["<<IP_ADDRESS>>"]   = $post["rs_ipaddress"];
+    $tag["<<PORT>>"]         = $post["rs_port"];
+    $tag["<<HEALTH_CHECK>>"] = $health_check_tmpl;
+
+    if ($post["weighting"] == "") {
+        $tag["<<WEIGHT>>"] = "";
+    } else {
+        $tag["<<WEIGHT>>"] = "weight ".$post["weighting"];
+    }
+
+    $conftmpl = change_template_tag($rsconftmpl, $tag);
+    return TRUE;
+}
+
+/***********************************************************
+ * get_rsconf
+ *
+ * リアルサーバ設定ファイルの読み込み 
+ *
+ * [引数]
+ *      $post        ポストされてきた値
+ *      &$data       リアルサーバの登録情報
+ * [返り値]
+ *      TRUE         成功
+ *      FALSE        失敗
+ ************************************************************/
+function get_rsconf ($post, &$data)
+{
+
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    $rsconf = $web_conf["iluka"]["keepalivedbasedir"]."virtual_server/".$post["ipaddress"]."_".$post["port"]."_".$post["protocol"]."/".$post["rs_ipaddress"]."_".$post["rs_port"].".conf";
+    $rshead = "real_server ".$post["rs_ipaddress"]." ".$post["rs_port"]." {";
+
+    $data = array("ipaddress"          => $post["ipaddress"],
+                  "port"               => $post["port"],
+                  "protocol"           => $post["protocol"],
+                  "rs_ipaddress"        => $post["rs_ipaddress"],
+                  "rs_port"             => $post["rs_port"],
+                  "weight"             => "",
+                  "path"               => "",
+                  "digest"             => "",
+                  "status_code"        => "",
+                  "nb_get_retry"       => "",
+                  "delay_before_retry" => "",
+                  "connect_ip"         => "",
+                  "connect_port"       => "",
+                  "bindto"             => "",
+                  "bind_port"          => "",
+                  "connect_timeout"    => "",
+                  "smtp_retry"         => "",
+                  "smtp_delay_retry"   => "",
+                  "helo_name"          => "",
+                  "misc_path"          => "",
+		  "misc_timeout"       => "",
+	          "udp_require_reply"  => 0,
+	          "dns_type"           => "",
+	          "dns_name"           => "");
+
+    $fh = fopen($rsconf, "r");
+    if ($fh === FALSE) {
+        $err_msg = sprintf($msgarr['28074'][SCREEN_MSG], $rsconf);
+        $log_msg = sprintf($msgarr['28074'][LOG_MSG], $rsconf);
+        return FALSE;
+    }
+
+    /* 「rear_server [IP] [PORT] {」まで読み飛ばす処理 */
+    while($result = fgets($fh)) {
+        $result = trim($result);
+        if ($result === $rshead) {
+            break;
+        }
+    }
+
+    if ($result === FALSE) {
+        $err_msg = sprintf($msgarr['28085'][SCREEN_MSG], $rsconf);
+        $log_msg = sprintf($msgarr['28085'][LOG_MSG], $rsconf);
+        return FALSE;
+    }
+
+    $health_flag = 0;
+    $url_flag = 0;
+    $host_flag = 0;
+
+    while ($result = fgets($fh)) {
+        $result = trim($result);
+        $lines = preg_split("[\s+]", $result, 2);
+
+        /* HTT_GETとSSL_GETの場合 */
+        if ($health_flag === 1) {
+            if ($lines[0] === "url") {
+                $url_flag = 1;
+                continue;
+            }
+            if ($url_flag === 1) {
+                if ($lines[0] === "path") {
+                    $data["path"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "digest") {
+                    $data["digest"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "status_code") {
+                    $data["status_code"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "}") {
+                    $url_flag = 0;
+                    continue;
+                }
+            } else {
+                if ($lines[0] === "nb_get_retry") {
+                    $data["nb_get_retry"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "delay_before_retry") {
+                    $data["delay_before_retry"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "connect_ip") {
+                    $data["connect_ip"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "connect_port") {
+                    $data["connect_port"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "bindto") {
+                    $data["bindto"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "bind_port") {
+                    $data["bind_port"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "connect_timeout") {
+                    $data["connect_timeout"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "}") {
+                    $healt_flag = 0;
+                    continue;
+                }
+            }
+
+        /* TCP_CHECKの場合 */
+        } elseif ($health_flag === 2) {
+            if ($lines[0] === "connect_ip") {
+                $data["connect_ip"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "connect_port") {
+                $data["connect_port"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "bindto") {
+                $data["bindto"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "bind_port") {
+                $data["bind_port"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "connect_timeout") {
+                $data["connect_timeout"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "}") {
+               $healt_flag = 0;
+                continue;
+            }
+
+        /* SMTP_CHECKの場合 */
+        } elseif ($health_flag === 3) {
+            if ($lines[0] === "host") {
+                $host_flag = 1;
+                continue;
+            }
+            if ($host_flag === 1) {
+                if ($lines[0] === "connect_ip") {
+                    $data["connect_ip"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "connect_port") {
+                    $data["connect_port"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "bindto") {
+                    $data["bindto"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "bind_port") {
+                    $data["bind_port"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "connect_timeout") {
+                    $data["connect_timeout"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "}") {
+                    $host_flag = 0;
+                    continue;
+                }
+            } else {
+                if ($lines[0] === "retry") {
+                    $data["smtp_retry"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "delay_before_retry") {
+                    $data["smtp_delay_retry"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "helo_name") {
+                    $data["helo_name"] = $lines[1];
+                    continue;
+                }
+                if ($lines[0] === "}") {
+                    $healt_flag = 0;
+                    continue;
+                }
+            }
+
+        /* MISC_CHECKの場合 */
+        } elseif ($health_flag === 4) {
+            if ($lines[0] === "misc_path") {
+                $data["misc_path"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "misc_timeout") {
+                $data["misc_timeout"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "}") {
+                $healt_flag = 0;
+                continue;
+            }
+
+        /* UDP_CHECKの場合 */
+        } elseif ($health_flag === 5) {
+            if ($lines[0] === "connect_ip") {
+                $data["connect_ip"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "connect_port") {
+                $data["connect_port"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "bindto") {
+                $data["bindto"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "bind_port") {
+                $data["bind_port"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "connect_timeout") {
+                $data["connect_timeout"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "require_reply") {
+                $data["udp_require_reply"] = 1;
+                continue;
+            }
+            if ($lines[0] === "}") {
+               $healt_flag = 0;
+                continue;
+            }
+
+        /* DNS_CHECKの場合 */
+        } elseif ($health_flag === 6) {
+            if ($lines[0] === "connect_ip") {
+                $data["connect_ip"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "connect_port") {
+                $data["connect_port"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "bindto") {
+                $data["bindto"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "bind_port") {
+                $data["bind_port"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "connect_timeout") {
+                $data["connect_timeout"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "type") {
+                $data["dns_type"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "name") {
+                $data["dns_name"] = $lines[1];
+                continue;
+            }
+            if ($lines[0] === "}") {
+               $healt_flag = 0;
+                continue;
+            }
+
+        } else {
+            /* ヘルスチェックの取得 */
+            if ($lines[0] === "HTTP_GET") {
+                $data["h_check"] = 0;
+                $health_flag = 1;
+                $continue;
+            }
+            if ($lines[0] === "SSL_GET") {
+                $data["h_check"] = 1;
+                $health_flag = 1;
+                $continue;
+            }
+            if ($lines[0] === "TCP_CHECK") {
+                $data["h_check"] = 2;
+                $health_flag = 2;
+                $continue;
+            }
+            if ($lines[0] === "SMTP_CHECK") {
+                $data["h_check"] = 3;
+                $health_flag = 3;
+                $continue;
+            }
+            if ($lines[0] === "MISC_CHECK") {
+                $data["h_check"] = 4;
+                $health_flag = 4;
+                $continue;
+            }
+            if ($lines[0] === "UDP_CHECK") {
+                $data["h_check"] = 5;
+                $health_flag = 5;
+                $continue;
+            }
+            if ($lines[0] === "DNS_CHECK") {
+                $data["h_check"] = 6;
+                $health_flag = 6;
+                $continue;
+            }
+
+            /* 重み付けの取得 */
+            if ($lines[0] === "weight") {
+                $data["weight"] = $lines[1];
+                continue;
+            }
+
+            /* 終了地点の取得 */    
+            if ($lines[0] === "}") {
+                break;
+            }
+        }
+        if ($result === FALSE) {
+            $err_msg = sprintf($msgarr['28085'][SCREEN_MSG], $rsconf);
+            $log_msg = sprintf($msgarr['28085'][LOG_MSG], $rsconf);
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/**********************************************************
+ * rsconf_check_form
+ *
+ * 入力値の形式チェック
+ *
+ * [引数]
+ * $post                POSTされてきた入力値
+ *
+ * [返り値]
+ * TRUE                 正常
+ * FALSE                異常
+ **********************************************************/
+function rsconf_check_form ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* 重み付けの形式チェック */
+    if ($post["weighting"] !== "") {
+        if (strlen($post["weighting"]) > 5) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "重み付け");
+            return FALSE;
+        }
+        if (ctype_digit($post["weighting"]) === FALSE) {
+            $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "重み付け");
+            return FALSE;
+        }
+    }
+
+    /* ヘルスチェックの形式チェック */
+    if ($post["h_check"] === "") {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+    if (strlen($post["h_check"]) > 1) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+    if (ctype_digit($post["h_check"]) === FALSE) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+    if ($post["h_check"] > 6) {
+        $err_msg = sprintf($msgarr['28069'][SCREEN_MSG], "ヘルスチェック");
+        return FALSE;
+    }
+
+    /* 形式の決定 */
+    if ($post["h_check"] == 0 || $post["h_check"] == 1) {
+        if (check_http($post) === FALSE) {
+            return FALSE;
+        }
+
+    } elseif ($post["h_check"] == 2) {
+        if (check_tcp($post) === FALSE) {
+            return FALSE;
+        }
+
+    } elseif ($post["h_check"] == 3) {
+        if (check_smtp($post) === FALSE) {
+            return FALSE;
+        }
+
+    } elseif ($post["h_check"] == 4) {
+        if (check_misc($post) === FALSE) {
+            return FALSE;
+        }
+    } elseif ($post["h_check"] == 5) {
+        if (check_udp($post) === FALSE) {
+            return FALSE;
+        }
+    } elseif ($post["h_check"] == 6) {
+        if (check_dns($post) === FALSE) {
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+
+/***********************************************************
+ * rsconf_reload_status
+ *
+ * リロードするか否かの決定
+ *
+ * [引数]
+ *        $post               IPとPORT
+ *        $vsiport            バーチャルサーバのIP_PORT
+ *        $rsiport            リアルサーバのIP_POT
+ * [返り値]
+ *        TRUE                成功 
+ *        FALSE               失敗
+ **********************************************************/
+function rsconf_reload_status ($post, $vsiport ,$rsiport)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    $vsfilename = $web_conf["iluka"]["keepalivedbasedir"]."virtual_server.conf";
+    $rsfilename = $web_conf["iluka"]["keepalivedbasedir"]."virtual_server/".$vsiport."/real_server.conf";
+
+    /* リアルサーバの状態確認 */
+    $result = read_rslist($rsfilename, $rsconfdata);
+    if ($result === FALSE) {
+        return FALSE;
+    }
+
+    $rs_cht = count($rsconfdata);
+    for ($i = 0; $i < $rs_cht; $i++) {
+        $check = $rsconfdata[$i]["rs_ipaddress"]."_".$rsconfdata[$i]["rs_port"];
+        if ($check == $rsiport) {
+            $status = $rsconfdata[$i]["rsable"];
+            break;
+        }
+    }
+    if ($i === $rs_cht){
+        $err_msg = $msgarr['28051'][SCREEN_MSG];
+        return FALSE;
+    }
+
+    /* 対象行のstatusが無効ならばリロードしない */
+    if ($status === "disable") {
+        return TRUE;
+    }
+
+    /* バーチャルサーバの状態確認 */
+    $result = read_vslist($vsfilename, $vsconfdata);
+    if ($result === FALSE) {
+        return FALSE;
+    }
+    $vs_cht = count($vsconfdata);
+
+    for ($i = 0; $i < $vs_cht; $i++) {
+        $check = $vsconfdata[$i]["ipaddress"]."_".$vsconfdata[$i]["port"].
+                 "_".$vsconfdata[$i]["protocol"];
+        if ($check == $vsiport) {
+            $status = $vsconfdata[$i]["able"];
+            break;
+        }
+    }
+
+    if ($i === $vs_cht){
+        $err_msg = $msgarr['28051'][SCREEN_MSG];
+        return FALSE;
+    }
+
+    /* 対象行のstatusが有効ならばリロード */
+    if ($status === "enable") {
+        $result = reload_keepalived();
+        if ($result === FALSE)  {
+            result_log(OPERATION . ":NG:" . $log_msg, LOG_ERR);
+            syserr_display();
+            exit(0);
+        }
+    }
+
+    return TRUE;
+}
+
+/***********************************************************
+ * check_vs_exists
+ *
+ * バーチャルサーバの存在確認
+ *
+ * [引数]
+ *        $post               ポストされてきた値
+ * [返り値]
+ *        0                   成功
+ *        1                   セッションエラー
+ *        2                   サーバが存在しない場合
+ **********************************************************/
+function check_vs_exists ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* IPとポートがわたって来ているかの確認 */
+    if ($post["ipaddress"] === "" || strlen($post["ipaddress"]) > 39 || !filter_var($post["ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+        return 1;
+    }
+
+    /* ポート番号の形式チェック */
+    if ($post["port"] === "" || strlen($post["port"]) > 5 || ctype_digit($post["port"]) === FALSE || $post["port"] > 65535) {
+        return 1; 
+    }
+
+    /* プロトコルの形式チェック */
+    if ($post["protocol"] === "" || strlen($post["protocol"]) !== 1 ||
+            ctype_digit($post["protocol"]) === false ||
+            $post["protocol"] < 0 || $post["protocol"] > 1) {
+        return 1;
+    }
+
+    /* バーチャルサーバ設定ファイルとディレクトリの存在確認 */
+    $vsdir = $web_conf["iluka"]["keepalivedbasedir"]."virtual_server/".
+             $post["ipaddress"]."_".$post["port"]."_".$post["protocol"];
+    $vsfile = $web_conf["iluka"]["keepalivedbasedir"]."virtual_server/".
+              $post["ipaddress"]."_".$post["port"]."_".$post["protocol"].".conf";
+
+    if (!file_exists($vsdir)) {
+        $err_msg = sprintf($msgarr['28084'][SCREEN_MSG], $vsdir);
+        $log_msg = sprintf($msgarr['28084'][LOG_MSG], $vsdir);
+        return 2;
+    }
+    if (!file_exists($vsfile)) {
+        $err_msg = sprintf($msgarr['28084'][SCREEN_MSG], $vsfile);
+        $log_msg = sprintf($msgarr['28084'][LOG_MSG], $vsfile);
+        return 2;
+    }
+
+    return 0;
+}
+
+/***********************************************************
+ * check_rs_exists
+ *
+ * リアルルサーバの存在確認
+ *
+ * [引数]
+ *        $post               ポストされてきた値
+ * [返り値]
+ *        0                   成功
+ *        1                   セッションエラー
+ *        2                   サーバが存在しない場合
+ **********************************************************/
+function check_rs_exists ($post)
+{
+    global $msgarr;
+    global $err_msg;
+    global $log_msg;
+    global $web_conf;
+
+    /* IPとポートがわたって来ているかの確認 */
+    if ($post["rs_ipaddress"] === "" || strlen($post["rs_ipaddress"]) > 39 || !filter_var($post["rs_ipaddress"], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6)) {
+        return 1;
+    }
+
+    /* ポート番号の形式チェック */
+    if ($_POST["rs_port"] === "" || strlen($_POST["rs_port"]) > 5 || ctype_digit($_POST["rs_port"]) === FALSE || $_POST["rs_port"] > 65535) {
+        return 1; 
+    }
+
+    /* リアルサーバ設定ファイルの存在確認 */
+    $rsfile = $web_conf["iluka"]["keepalivedbasedir"]."virtual_server/".$post["ipaddress"]."_".$post["port"]."_".$post["protocol"]."/".$post["rs_ipaddress"]."_".$post["rs_port"].".conf";
+
+    if (!file_exists($rsfile)) {
+        $err_msg = sprintf($msgarr['28084'][SCREEN_MSG], $rsfile);
+        $log_msg = sprintf($msgarr['28084'][LOG_MSG], $rsfile);
+        return 2;
+    }
+
+    return 0;
+}

@@ -1,0 +1,117 @@
+/*
+ * ILUKA
+ *
+ * Copyright (C) 2017 DesigNET, INC.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+.navbar-brand {
+  background: url("../admin/images/logo_iluka.png") no-repeat left center;
+  background-size: contain;
+  height: 40px;
+  width: 100px;
+  margin-top:10px;
+}
+
+th.key1 {
+  font-size: 8pt;
+  text-align: center;
+  width: 100px;
+}
+
+th.key2 {
+  font-size: 8pt;
+  text-align: center;
+  width: 280px;
+}
+
+th.key3 {
+  width: 40px;
+}
+
+th.key4 {
+  font-size: 8pt;
+  text-align: center;
+  width: 80px;
+}
+
+td.value_center {
+  text-align: center;
+}
+
+.virtualserver {
+  width: 300px;
+}
+
+input.btn_enable  {
+  table-layout: fixed;
+  width:  20px;
+  height: 20px;
+  border-collapse:  collapse;
+  border-style: none;
+  margin: 0px;
+  padding:  0px;
+  background: url(../admin/images/enable.png);
+}
+
+input.btn_disable  {
+  table-layout: fixed;
+  width:  20px;
+  height: 20px;
+  border-collapse:  collapse;
+  border-style: none;
+  margin: 0px;
+  padding:  0px;
+  background: url(../admin/images/disable.png);
+}
+
+input.list_del_btn  {
+  table-layout: fixed;
+  width:  20px;
+  height: 20px;
+  border-collapse:  collapse;
+  border-style: none;
+  margin: 0px;
+  padding:  0px;
+  background: url(../admin/images/trash_can.jpg) no-repeat;
+}
+
+td.vserver {
+  text-align: center;
+  width:  150px;
+}
+td.rserver {
+  text-align: center;
+  width:  150px;
+}
+td.ipaddr {
+  text-align: center;
+  display: table-cell;
+  vertical-align: middle;
+  width:  280px;
+}
+td.port {
+  text-align: center;
+  display: table-cell;
+  vertical-align: middle;
+  width:  100px;
+}
+td.center {
+  text-align: center;
+  display: table-cell;
+  vertical-align: middle;
+  width:  150px;
+}

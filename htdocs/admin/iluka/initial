@@ -1,0 +1,11 @@
+<?php
+$conf_keys["iluka"] = array("keepalivedreloadscript" => "no_check",
+                            "localpartrfccheck"      => "check_boolean",
+                            "keepalivedbasedir"      => "no_check",
+                            "lockfile"               => "no_check");
+
+$conf_def["iluka"]  = array("keepalivedreloadscript" => "/bin/true",
+                            "localpartrfccheck"      => 0,
+                            "keepalivedbasedir"      => "/etc/keepalived/",
+                            "lockfile"               => "/var/iluka/iluka.lock");
+?>

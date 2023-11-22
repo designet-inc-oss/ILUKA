@@ -1,0 +1,12 @@
+    SMTP_CHECK {
+        host {
+            <<CONNECT_IP>>
+            <<CONNECT_PORT>>
+            <<BINDTO>>
+            <<BIND_PORT>>
+            <<CONNECT_TIMEOUT>>
+        }
+        <<RETRY>>
+        <<DELAY_BEFORE_RETRY>>
+        <<HELO_NAME>>
+    }

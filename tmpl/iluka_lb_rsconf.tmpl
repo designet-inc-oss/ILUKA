@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <title><<TITLE>></title>
+  <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta charset="EUC-JP">
+  <<JAVASCRIPT>>
+
+<script>
+<!--
+function disp_check(obj)
+{
+    element = document.getElementById("h_check");
+
+    for (i = 0; i < element.options.length; i++) {
+        if (element.options[i].selected == true) {
+            break;
+        }
+    }
+
+    switch (element.options[i].value) {
+        case '0': // HTTP_GET
+        case '1': // SSL_GET
+            document.getElementById("http_check").style.display="block";
+            document.getElementById("tcp_check").style.display="none";
+            document.getElementById("smtp_check").style.display="none";
+            document.getElementById("misc_check").style.display="none";
+            document.getElementById("udp_check").style.display="none";
+            document.getElementById("dns_check").style.display="none";
+            break;
+        case '2': // TCP_CHECK
+            document.getElementById("http_check").style.display="none";
+            document.getElementById("tcp_check").style.display="block";
+            document.getElementById("smtp_check").style.display="none";
+            document.getElementById("misc_check").style.display="none";
+            document.getElementById("udp_check").style.display="none";
+            document.getElementById("dns_check").style.display="none";
+            break;
+        case '3': // SMTP_CHECK
+            document.getElementById("http_check").style.display="none";
+            document.getElementById("tcp_check").style.display="none";
+            document.getElementById("smtp_check").style.display="block";
+            document.getElementById("misc_check").style.display="none";
+            document.getElementById("udp_check").style.display="none";
+            document.getElementById("dns_check").style.display="none";
+            break;
+        case '4': // MISC_CHECK
+            document.getElementById("http_check").style.display="none";
+            document.getElementById("tcp_check").style.display="none";
+            document.getElementById("smtp_check").style.display="none";
+            document.getElementById("misc_check").style.display="block";
+            document.getElementById("udp_check").style.display="none";
+            document.getElementById("dns_check").style.display="none";
+            break;
+        case '5': // UDP_CHECK
+            document.getElementById("http_check").style.display="none";
+            document.getElementById("tcp_check").style.display="none";
+            document.getElementById("smtp_check").style.display="none";
+            document.getElementById("misc_check").style.display="none";
+            document.getElementById("udp_check").style.display="block";
+            document.getElementById("dns_check").style.display="none";
+            break;
+        case '6': // DNS_CHECK
+            document.getElementById("http_check").style.display="none";
+            document.getElementById("tcp_check").style.display="none";
+            document.getElementById("smtp_check").style.display="none";
+            document.getElementById("misc_check").style.display="none";
+            document.getElementById("udp_check").style.display="none";
+            document.getElementById("dns_check").style.display="block";
+            break;
+        default:
+            document.getElementById("http_check").style.display="none";
+            document.getElementById("tcp_check").style.display="none";
+            document.getElementById("smtp_check").style.display="none";
+            document.getElementById("misc_check").style.display="none";
+            document.getElementById("udp_check").style.display="none";
+            document.getElementById("dns_check").style.display="none";
+            break;
+    }
+}
+-->
+</script>
+
+
+  <link rel="stylesheet" href="../../../css/bootstrap/css/bootstrap-paper.css">
+  <script src="../../../js/jquery-3.1.1.min.js"></script>
+  <script src="../../../js/jquery-ui.min.js"></script>
+  <script src="../../../css/bootstrap/js/bootstrap.min.js"></script>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="stylesheet" href="../../iluka.css">
+</head>
+
+<body>
+<header class="">
+  <nav class="navbar navbar-default navmargin">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#gmenu">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <div class="navbar-brand"></div>
+    </div>
+
+
+    <div id="gmenu" class="collapse navbar-collapse">
+      <ul class="nav navbar-nav navbar-right ">
+<<START_TAB>>
+<li class="<<ACTIVE>>"><a href="#" onClick="dgpSubmit('<<URL>>')"><span class="glyphicon glyphicon-user" aria-hidden="true"></span><<NAME>></a></li>
+<<END_TAB>>
+<li class=""><a href="#" onClick="dgpSubmit('../../logout.php')"><span class="glyphicon glyphicon-user" aria-hidden="true"></span>ログアウト</a></li>
+      </ul>
+    </div>
+  </nav>
+  <div class="container-fluid fix-padding">
+  </div>
+</header>
+
+<div class="container-fluid">
+  <!-- 左グリッド  -->
+  <div class="row">
+    <!-- 左ナビゲーションバー -->
+    <nav class="aside col-sm-2 col-sm-offset-1">
+      <div class="panel panel-default">
+        <ul class="list-group">
+<<START_MENU>>
+<a class="list-group-item  <<ACTIVE>>" href="#"	onClick="dgpSubmit('<<URL>>')"><<NAME>></a>
+<<END_MENU>>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- 右グリッド  -->
+    <div class="col-sm-8">
+      <!-- エラーメッセージ -->
+
+      <!-- メインコンテンツ -->
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          <h3 class="panel-title">リアルサーバ設定</h3>
+        </div>
+        <div class="ErrorMessage"></div>
+        <div class="row panel-body">
+          <!-- フォーム -->
+          <div class="col-sm-10 col-sm-offset-1">
+            <form class="form-horizontal" method="POST" action="rsconf.php" name="data_form">
+              <div class="form-group well">
+
+                <<MESSAGE>>
+
+                <table border="3" class="table-bordered server_info">
+                  <tr>
+                    <td class="vserver" rowspan="2">バーチャルサーバ</td>
+                    <td class="ipaddr">IPアドレス</td>
+                    <td class="port">ポート番号</td>
+                  </tr>
+                  <tr>
+                    <td class="ipaddr"><<IPADDRESS>></td>
+                    <td class="port"><<PORT>>/<<PROTOCOL_NAME>></td>
+                  </tr>
+                </table>
+                <br>
+                <table border="3" class="table-bordered server_info">
+                  <tr>
+                    <td class="rserver" rowspan="2">リアルサーバ</td>
+                    <td class="ipaddr">IPアドレス</td>
+                    <td class="port">ポート番号</td>
+                  </tr>
+                  <tr>
+                    <td class="ipaddr"><<RSIPADDRESS>></td>
+                    <td class="port"><<RSPORT>></td>
+                  </tr>
+                </table>
+                <br>
+
+                <div class="form-group">
+                  <label for="user" class="col-sm-2 control-label">重み付け</label>
+                  <div class="col-sm-8">
+                    <input type="text" class="form-control" size="8" name="weighting" maxlength="5" value="<<WEIGHT>>">
+                  </div>
+                </div>
+
+
+                <div class="form-group">
+                  <label for="user" class="col-sm-2 control-label">ヘルスチェック</label>
+                  <div class="col-sm-8">
+                    <div class="form-group">
+                      <div class="col-sm-2">
+                        <select name="h_check" class="virtualserver" id="h_check" onChange="disp_check()">
+                          <<H_CHECK>>
+                        </select>
+
+                      </div>
+                    </div>
+
+                    <div id="http_check" class="form-group">
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">パス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="40" name="http_path" maxlength="256" value="<<PATH>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">ダイジェスト</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="40" name="http_digest" maxlength="64" value="<<DIGEST>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">ステータス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="http_status_code" maxlength="7" value="<<STATUS_CODE>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">リトライ回数</label>
+                        <div class="col-sm-8">
+                           <input type="text" class="form-control" size="8" name="nb_get_retry" maxlength="3" value="<<NB_GET_RETRY>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">リトライ間隔(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="http_delay_retry" maxlength="3" value="<<DELAY_BEFORE_RETRY>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続先IPアドレス</label>
+                        <div class="col-sm-8">
+                           <input type="text" class="form-control" size="20" name="http_connect_ipaddress" maxlength="39" value="<<CONNECT_IP>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続先ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="http_connect_port" maxlength="5" value="<<CONNECT_PORT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続元IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="http_connect_source_ipaddress" maxlength="39" value="<<BINDTO>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続元ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="http_connect_source_port" maxlength="5" value="<<BIND_PORT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続タイムアウト(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="http_connect_timeout" maxlength="3" value="<<CONNECT_TIMEOUT>>">
+                        </div>
+                      </div>
+<!-- 
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">fwmark</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="h_status" value="">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">warmup</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="h_status" value="">
+                        </div>
+                      </div>
+-->
+
+                    </div>
+
+                    <div id="tcp_check" class="form-group">
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続先IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="tcp_connect_ipaddress" maxlength="39" value="<<CONNECT_IP>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続先ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="tcp_connect_port" maxlength="5" value="<<CONNECT_PORT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続元IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="tcp_connect_source_ipaddress" maxlength="39" value="<<BINDTO>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続元ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="tcp_connect_source_port" maxlength="5" value="<<BIND_PORT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続タイムアウト(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="tcp_connect_timeout" maxlength="3" value="<<CONNECT_TIMEOUT>>">
+                        </div>
+                      </div>
+
+<!--
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">fwmark</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="t_status" value="">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">warmup</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="t_status" value="">
+                        </div>
+                      </div>
+-->
+
+                    </div>
+
+                    <div id="smtp_check" class="form-group">
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続先IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="smtp_connect_ipaddress" maxlength="39" value="<<CONNECT_IP>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続先ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="smtp_connect_port" maxlength="5" value="<<CONNECT_PORT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続元IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="smtp_connect_source_ipaddress" maxlength="39" value="<<BINDTO>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続元ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="smtp_connect_source_port" maxlength="5" value="<<BIND_PORT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">接続タイムアウト(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="smtp_connect_timeout" maxlength="3" value="<<CONNECT_TIMEOUT>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">リトライ回数</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="smtp_retry" maxlength="3" value="<<SMTP_RETRY>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">リトライ間隔(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="smtp_delay_retry" maxlength="3" value="<<SMTP_DELAY_RETRY>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">HELOリクエスト</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="40" name="helo_name" maxlength="256" value="<<HELO_NAME>>">
+                        </div>
+                      </div>
+
+<!--
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">fwmark</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="t_status" value="">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">warmup</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="t_status" value="">
+                        </div>
+                      </div>
+-->
+                    </div>
+
+                    <div id="misc_check" class="form-group">
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">スクリプトパス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="40" name="misc_path" maxlength="256" value="<<MISC_PATH>>">
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">タイムアウト(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="misc_timeout" maxlength="3" value="<<MISC_TIMEOUT>>">
+                        </div>
+                      </div>
+
+<!--
+                      <div class="form-group">
+                        <label for="user" class="col-sm-4 control-label">warmup</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="m_status" value="">
+                        </div>
+                      </div>
+-->
+                    </div>
+
+                    <div id="udp_check" class="form-group">
+                      <div class="form-group">
+                        <label for="udp_connect_ipaddress" class="col-sm-4 control-label">接続先IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="udp_connect_ipaddress" maxlength="39" value="<<CONNECT_IP>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="udp_connect_port" class="col-sm-4 control-label">接続先ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="udp_connect_port" maxlength="5" value="<<CONNECT_PORT>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="udp_connect_source_ipaddress" class="col-sm-4 control-label">接続元IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="udp_connect_source_ipaddress" maxlength="39" value="<<BINDTO>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="udp_connect_source_port" class="col-sm-4 control-label">接続元ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="udp_connect_source_port" maxlength="5" value="<<BIND_PORT>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="udp_connect_timeout" class="col-sm-4 control-label">接続タイムアウト(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="udp_connect_timeout" maxlength="3" value="<<CONNECT_TIMEOUT>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="udp_connect_reauire_reply" class="col-sm-4 control-label">リプライチェック</label>
+                        <div class="col-sm-8">
+                          <select name="udp_connect_require_reply" class="virtualserver">
+                            <<UDP_REQUIRE_REPLY>>
+                          </select>
+                        </div>
+                      </div>
+                    </div> <!-- id="udp_check" -->
+
+                    <div id="dns_check" class="form-group">
+                      <div class="form-group">
+                        <label for="dns_connect_ipaddress" class="col-sm-4 control-label">接続先IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="dns_connect_ipaddress" maxlength="39" value="<<CONNECT_IP>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="dns_connect_port" class="col-sm-4 control-label">接続先ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="dns_connect_port" maxlength="5" value="<<CONNECT_PORT>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="dns_connect_source_ipaddress" class="col-sm-4 control-label">接続元IPアドレス</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="20" name="dns_connect_source_ipaddress" maxlength="39" value="<<BINDTO>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="dns_connect_source_port" class="col-sm-4 control-label">接続元ポート番号</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="dns_connect_source_port" maxlength="5" value="<<BIND_PORT>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="dns_connect_timeout" class="col-sm-4 control-label">接続タイムアウト(秒)</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" size="8" name="dns_connect_timeout" maxlength="3" value="<<CONNECT_TIMEOUT>>">
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="dns_type" class="col-sm-4 control-label">タイプ</label>
+                        <div class="col-sm-8">
+                          <select name="dns_type" class="virtualserver">
+                            <<DNS_TYPE>>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="dns_name" class="col-sm-4 control-label">名前</label>
+                        <div class="col-sm-8">
+                          <input type="text" class="form-control" name="dns_name" maxlength="512" value="<<DNS_NAME>>">
+                        </div>
+                      </div>
+                    </div> <!-- id="dns_check" -->
+                  </div>
+                </div>
+
+
+                <!-- ボタン -->
+                <div class="form-group">
+                  <div class="col-sm-12">
+<<SK>>
+                    <input type="submit" name="update" value="更新" class="btn btn-primary" onClick="return msgConfirm('リアルサーバ <<RSIPADDRESS>> <<RSPORT>> を更新します。\nよろしいですか？')">
+                    <input type="submit" name="cancel" value="キャンセル" class="btn btn-primary">
+                    <<SK>>
+                    <input type="hidden" name="ipaddress" value="<<IPADDRESS>>">
+                    <input type="hidden" name="port" value="<<PORT>>">
+                    <input type="hidden" name="protocol" value="<<PROTOCOL>>">
+                    <input type="hidden" name="rs_ipaddress" value="<<RSIPADDRESS>>">
+                    <input type="hidden" name="rs_port" value="<<RSPORT>>">
+
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="footer nav navbar-default">
+    <nav class="pull-right">
+      <div class="navbar-brand"></div>
+    </nav>
+</footer>
+
+<form method="post" name="common">
+  <<SK>>
+</form>
+
+<script type="text/javascript">
+disp_check();
+</script>
+
+</body>
+</html>

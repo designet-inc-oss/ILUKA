@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<title><<TITLE>></title>
+<meta charset="EUC-JP">
+<<JAVASCRIPT>>
+
+<script type="text/javascript">
+<!--
+function dgpDeleteRsv(rs_ipaddress, rs_port) {
+    if (msgConfirm('リアルサーバ ' + rs_ipaddress + ' ' + rs_port + ' を削除します。\nよろしいですか？') == false) {
+        return false;
+    }
+    return(dgpActFunc('delete', rs_ipaddress, rs_port, ''));
+}
+function dgpAbleRsv(rs_ipaddress, rs_port, rs_act_class) {
+    if (rs_act_class == 'enable') {
+        stat = '有効';
+    } else {
+        stat = '無効';
+    }
+    if (msgConfirm('リアルサーバ ' + rs_ipaddress + ' ' + rs_port + ' を' + stat + 'にします。\nよろしいですか？') == false) {
+        return false;
+    }
+    return(dgpActFunc(rs_act_class, rs_ipaddress, rs_port, ''));
+}
+function dgpGoRsvadd (rs_ipaddress, rs_port) {
+    return(dgpActFunc('rsadd', rs_ipaddress, rs_port, 'rsadd.php'));
+}
+function dgpActFunc(rs_act_class, rs_ipaddress, rs_port, url) {
+    document.getElementById('rs_ipaddress').value = rs_ipaddress;
+    document.getElementById('rs_port').value = rs_port;
+    document.getElementById('rs_act_class').value = rs_act_class;
+    if (url != '') {
+        document.forms['test_form'].action = url;
+    }
+    document.forms['test_form'].submit();
+    return true;
+}
+
+function dgpGoRsvconf(ipaddress, port, protocol, rs_ipaddress, rs_port) {
+    return(dgpConfFunc('rsconf', ipaddress, port, protocol, rs_ipaddress, rs_port, 'rsconf.php'));
+}
+function dgpConfFunc(rs_act_class, ipaddress, port, protocol, rs_ipaddress, rs_port, url) {
+    document.getElementById('ipaddress').value = ipaddress;
+    document.getElementById('port').value = port;
+    document.getElementById('protocol').value = protocol;
+    document.getElementById('rs_ipaddress').value = rs_ipaddress;
+    document.getElementById('rs_port').value = rs_port;
+    document.getElementById('rs_act_class').value = rs_act_class;
+    if (url != '') {
+        document.forms['test_form'].action = url;
+    }
+    document.forms['test_form'].submit();
+    return true;
+}
+-->
+</script>
+
+  <link rel="stylesheet" href="../../../css/bootstrap/css/bootstrap-paper.css">
+  <script src="../../../js/jquery-3.1.1.min.js"></script>
+  <script src="../../../js/jquery-ui.min.js"></script>
+  <script src="../../../css/bootstrap/js/bootstrap.min.js"></script>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="stylesheet" href="../../iluka.css">
+</head>
+
+<body>
+<header class="">
+  <nav class="navbar navbar-default navmargin">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#gmenu">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <div class="navbar-brand"></div>
+    </div>
+
+    <div id="gmenu" class="collapse navbar-collapse">
+      <ul class="nav navbar-nav navbar-right ">
+<<START_TAB>>
+<li class="<<ACTIVE>>"><a href="#" onClick="dgpSubmit('<<URL>>')"><span class="glyphicon glyphicon-user" aria-hidden="true"></span><<NAME>></a></li>
+<<END_TAB>>
+<li class=""><a href="#" onClick="dgpSubmit('../../logout.php')"><span class="glyphicon glyphicon-user" aria-hidden="true"></span>ログアウト</a></li>
+      </ul>
+    </div>
+  </nav>
+  <div class="container-fluid fix-padding">
+  </div>
+</header>
+
+<div class="container-fluid">
+  <!-- 左グリッド  -->
+  <div class="row">
+    <!-- 左ナビゲーションバー -->
+    <nav class="aside col-sm-2 col-sm-offset-1">
+      <div class="panel panel-default">
+        <ul class="list-group">
+          <<START_MENU>>
+          <a class="list-group-item  <<ACTIVE>>" href="#"	onClick="dgpSubmit('<<URL>>')"><<NAME>></a>
+          <<END_MENU>>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- 右グリッド  -->
+    <div class="col-sm-8">
+      <!-- エラーメッセージ -->
+
+      <!-- メインコンテンツ -->
+      <div class="panel panel-primary">
+        <div class="panel-heading">
+          <h3 class="panel-title">リアルサーバ一覧</h3>
+        </div>
+        <div class="ErrorMessage"></div>
+        <div class="row panel-body">
+          <!-- フォーム -->
+          <div class="col-sm-10 col-sm-offset-1">
+            <form class="form-horizontal" method="POST" action="rslist.php" name="test_form">
+           
+              <div class="form-group well">
+                <<MESSAGE>>
+
+                <table border="3" class="table-bordered server_info">
+                  <tr>
+                    <td class="vserver" rowspan="2">バーチャルサーバ</td>
+                    <td class="ipaddr">IPアドレス</td>
+                    <td class="port">ポート番号</td>
+                  </tr>
+                  <tr>
+                    <td class="ipaddr"><<IPADDRESS>></td>
+                    <td class="port"><<PORT>>/<<PROTOCOL_NAME>></td>
+                  </tr>
+                </table>
+                <br>
+
+                <table class="table">
+                  <tr>
+                    <th class="key3"></th>
+                    <th class="key2">IPアドレス</th>
+                    <th class="key1">ポート番号</th>
+                    <th class="key4">リアル<br>サーバ設定</th>
+                    <th class="key3"></th>
+                  </tr>
+                  <<REAL_SERVER_LIST>>
+                </table>
+                <div class="space"></div>
+                <input type="button" name="update" value="新規追加" class="btn btn-primary" onClick="dgpGoRsvadd('<<IPADDRESS>>','<<PORT>>')">
+                <input type="button" name="return" value="戻る" class="btn btn-primary" onClick="dgpSubmit('index.php')">
+                <<SK>>
+                <input type="hidden" id="rs_ipaddress" name="rs_ipaddress" value="">
+                <input type="hidden" id="rs_port" name="rs_port" value="">
+                <input type="hidden" id="rs_act_class" name="rs_act_class" value="">
+                <input type="hidden" id="ipaddress" name="ipaddress" value="<<IPADDRESS>>">
+                <input type="hidden" id="port" name="port" value="<<PORT>>">
+                <input type="hidden" id="protocol" name="protocol" value="<<PROTOCOL>>">
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="footer nav navbar-default">
+    <nav class="pull-right">
+      <div class="navbar-brand"></div>
+    </nav>
+</footer>
+
+<form method="post" name="common">
+  <<SK>>
+</form>
+</body>
+</html>

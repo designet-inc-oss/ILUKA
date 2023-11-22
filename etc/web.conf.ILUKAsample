@@ -1,0 +1,5 @@
+[iluka]
+KeepalivedReloadScript=sudo /usr/local/postldapadmin/bin/reload_keepalived
+LocalPartRFCCheck=0
+KeepalivedBaseDir=/etc/keepalived/
+LockFile=/var/iluka/iluka.lock

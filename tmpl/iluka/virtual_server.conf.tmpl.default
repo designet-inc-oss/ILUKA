@@ -1,0 +1,11 @@
+virtual_server <<IP_ADDRESS>> <<PORT>> {
+    <<PROTOCOL>>
+    <<DELAY_LOOP>>
+    <<LB_ALGO>>
+    <<LB_KIND>>
+    <<PERSISTENCE TIMEOUT>>
+    <<VIRTUALHOST>>
+    <<SORRY_SERVER>>
+
+    include <<IP_ADDRESS>>_<<PORT>>_<<PROTOCOL_NUMBER>>/real_server.conf
+}

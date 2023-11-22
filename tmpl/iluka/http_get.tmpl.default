@@ -1,0 +1,14 @@
+    HTTP_GET {
+        url {
+            <<PATH>>
+            <<DIGEST>>
+            <<STATUS_CODE>>
+        }
+        <<NB_GET_RETRY>>
+        <<DELAY_BEFORE_RETRY>>
+        <<CONNECT_IP>>
+        <<CONNECT_PORT>>
+        <<BINDTO>>
+        <<BIND_PORT>>
+        <<CONNECT_TIMEOUT>>
+    }

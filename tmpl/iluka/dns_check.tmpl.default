@@ -1,0 +1,9 @@
+    DNS_CHECK {
+        <<CONNECT_IP>>
+        <<CONNECT_PORT>>
+        <<BINDTO>>
+        <<BIND_PORT>>
+        <<CONNECT_TIMEOUT>>
+        <<DNS_TYPE>>
+        <<DNS_NAME>>
+    }

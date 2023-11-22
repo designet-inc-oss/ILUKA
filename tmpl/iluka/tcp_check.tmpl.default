@@ -1,0 +1,7 @@
+    TCP_CHECK {
+        <<CONNECT_IP>>
+        <<CONNECT_PORT>>
+        <<BINDTO>>
+        <<BIND_PORT>>
+        <<CONNECT_TIMEOUT>>
+    }

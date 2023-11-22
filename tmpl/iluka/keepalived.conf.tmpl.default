@@ -1,0 +1,24 @@
+global_defs {
+    <<NOTITICATION_EMAIL>>
+    <<NOTITICATION_EMAIL_FROM>>
+    <<SMTP_SERVER>>
+    <<SMTP_CONNECT_TIMEOUT>>
+    router_id hostname.localdomain
+}
+
+vrrp_instance VI_1 {
+    state MASTER
+    interface eth0
+    virtual_router_id 51
+    priority 100
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass 1111
+    }
+    virtual_ipaddress {
+        10.1.1.200/24 dev eth0
+    }
+}
+
+include ./virtual_server.conf

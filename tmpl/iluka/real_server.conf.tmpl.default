@@ -1,0 +1,4 @@
+real_server <<IP_ADDRESS>> <<PORT>> {
+    <<WEIGHT>>
+<<HEALTH_CHECK>>
+}

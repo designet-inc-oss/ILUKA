@@ -1,0 +1,43 @@
+# keepalived/rule/index.php
+28045$keepalived設定ファイルの読み込みに失敗しました。(%s)  $Failed to read configuration file for keepalived.(%s)
+28046$通知先メールアドレスが正しく入力されていません。  $
+28047$送信元メールアドレスが正しく入力されていません。  $
+28048$SMTPサーバが正しく入力されていません。  $
+28049$SMTP接続タイムアウトが正しく入力されていません。  $
+28050$keepalived設定ファイルの更新に失敗しました。(%s)   $Failed to modify configuration file for keepalived.(%s)
+28051$keepalivedのリロードに失敗しました。  $Failed to reload keepalived.
+28052$グローバル設定を更新しました。 $
+28053$keepalived設定ファイルの設定形式が正しくありません。(%s)  $Failed to read configuration file for keepalived.(%s)
+28054$テンプレートファイルの読み込みに失敗しました。 $Failed to read tmpl file for keepalived. (keepalived.conf.tmpl) 
+28055$バーチャルサーバ設定ファイルの読み込みに失敗しました。(%s) $Failed to read configuration file for virtual_server.(%s)
+28056$テンプレートファイルの読み込みに失敗しました。 $Failed to read tmpl file for virtual_server_info. (virtual_server_info.tmpl)
+28057$バーチャルサーバ %s を無効に設定しました。 $
+28058$バーチャルサーバ %s を有効に設定しました。 $
+28059$バーチャルサーバ設定ファイルの更新に失敗しました。(%s) $Failed to modify configuration file for virtual_server.(%s) 
+28060$バーチャルサーバ設定ファイルの設定形式が不正です。(%s)  $Failed to read configuration file for virtual_server.(%s)
+28061$既にバーチャルサーバ設定ファイルが変更されています。(%s) $ 
+28062$バーチャルサーバ %s を削除しました。 $
+28063$バーチャルサーバ設定ファイルの削除に失敗しました。(%s) $Flailed to delete configuration file for virtual_server.(%s)
+28064$リアルサーバ設定ファイルの削除に失敗しました。(%s) $Flailed to delete configuration file for real_server.(%s)
+28065$バーチャルサーバ設定ディレクトリの削除に失敗しました。(%s) $Failed to delete configuration directory for virtual_server.(%s)
+28066$リアルサーバ設定ファイル %s の削除に失敗しました。 $Flailed to delete configuration file for real_server.(%s)
+28067$設定ファイルのロックに失敗しました。 $Flailed to lock configuration file. 
+28068$既に指定したバーチャルサーバが削除されています。(%s) $
+28069$%sが正しく入力されていません。 $
+28070$keepalived設定ファイルの作成に失敗しました。(%s) $Failed to create configuration file for keepalived.(%s)
+28071$keepalived設定ディレクトリの作成に失敗しました。(%s) $Failed to create configuration directory for keepalived.(%s)
+28072$keepalived設定ファイルにサポートされない設定（%s）が見つかりました。(%s) $Unsupported value (%s) in configuration file for keepalived.(%s)
+28073$keepalived設定ファイルの設定形式が正しくありません。(%s)  $Failed to read configuration file for keepalived.(%s)
+28074$リアルサーバ設定ファイルの読み込みに失敗しました。(%s) $Failed to read configuration file for real_server.(%s)
+28075$リアルサーバ設定ファイルの設定形式が不正です。(%s)  $Failed to read configuration file for real_server.(%s)
+28076$リアルサーバ %s を無効に設定しました。 $
+28077$リアルサーバ %s を有効に設定しました。 $
+28078$リアルサーバ %s を削除しました。 $
+28079$既にリアルサーバ設定ファイルが変更されています。(%s) $ 
+28080$既にリアルサーバ設定ファイルが削除されています。(%s) $ 
+28081$リアルサーバ設定ファイルの更新に失敗しました。(%s) $Failed to modify configuration file for real_server.(%s) 
+28082$リアルサーバ設定ファイルの削除に失敗しました。(%s) $Flailed to delete configuration file for real_server.(%s)
+28083$keepalived設定ファイルの作成に失敗しました。(%s) $Failed to create configuration file for keepalived.(%s)
+28084$指定されたバーチャルサーバが存在しません。(%s) $Virtual_Server dose not exists.(%s)
+28085$keepalived設定ファイルの設定形式が正しくありません。(%s) $Failed to read configuration file for keepalived.(%s)
+28086$keepalived設定ファイルの更新に失敗しました。(%s) $Failed to modify configuration file for keepalived.(%s)

@@ -1,0 +1,4 @@
+    MISC_CHECK {
+        <<MISC_PATH>>
+        <<MISC_TIMEOUT>>
+    }
